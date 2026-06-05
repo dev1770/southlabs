@@ -1,0 +1,218 @@
+---
+import Lightbox from "../components/Lightbox.astro";
+import { galleryItems } from "../data/gallery";
+// repeat the set so the masonry feels full while we only have placeholders
+const tiles = [...galleryItems, ...galleryItems, ...galleryItems];
+---
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<title>Galería — South Labs · Cultivo indoor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" href="/assets/southlabs-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style is:global>
+:root{
+  --bg:#0E1410;
+  --bg-2:#131B16;
+  --green-deep:#3B5A3A;
+  --green-sage:#8FA68B;
+  --cream:#E8E2D4;
+  --cream-dim:rgba(232,226,212,0.62);
+  --cream-faint:rgba(232,226,212,0.34);
+  --border:rgba(232,226,212,0.10);
+  --border-strong:rgba(232,226,212,0.18);
+  --ease:cubic-bezier(0.22,1,0.36,1);
+  --container:1320px;
+  --gutter:clamp(20px,4vw,52px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg)}
+html{scroll-behavior:smooth}
+body{
+  color:var(--cream);
+  font-family:'Geist',system-ui,sans-serif;
+  font-weight:300;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+::selection{background:var(--green-sage);color:var(--bg)}
+:focus-visible{outline:2px solid var(--green-sage);outline-offset:3px;border-radius:2px}
+
+.mono{font-family:'Geist Mono',ui-monospace,monospace;font-weight:400;font-size:11px;letter-spacing:0.18em;text-transform:uppercase}
+.container{max-width:var(--container);margin:0 auto;padding:0 var(--gutter)}
+
+/* NAV (shared look with the landing) */
+nav.site{position:fixed;top:0;left:0;right:0;z-index:50;height:80px;display:flex;align-items:center;
+  transition:background .35s var(--ease),border-color .35s var(--ease);border-bottom:1px solid transparent}
+nav.site.scrolled{background:rgba(14,20,16,0.78);backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);border-bottom-color:var(--border)}
+nav.site > .container{width:100%;max-width:none}
+nav.site .row{display:flex;align-items:center;justify-content:space-between;width:100%;gap:24px}
+.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:var(--cream);font-weight:700;font-size:18px;letter-spacing:-0.01em}
+.brand-logo{height:52px;width:auto;display:block;filter:drop-shadow(0 1px 6px rgba(0,0,0,0.45))}
+.menu-btn{width:46px;height:46px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--border-strong);border-radius:100px;cursor:pointer;color:var(--cream);transition:background .25s var(--ease),border-color .25s var(--ease);padding:0}
+.menu-btn:hover{background:rgba(232,226,212,0.06);border-color:var(--green-sage)}
+.menu-btn .bars{position:relative;width:18px;height:12px}
+.menu-btn .bars::before,.menu-btn .bars::after{content:"";position:absolute;left:0;right:0;height:1.5px;background:currentColor;transition:transform .35s var(--ease),top .35s var(--ease)}
+.menu-btn .bars::before{top:2px}.menu-btn .bars::after{top:8px}
+body.menu-open .menu-btn .bars::before{top:5px;transform:rotate(45deg)}
+body.menu-open .menu-btn .bars::after{top:5px;transform:rotate(-45deg)}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:min(440px,92vw);background:var(--bg-2);border-left:1px solid var(--border);z-index:49;transform:translateX(100%);transition:transform .5s var(--ease);padding:120px 48px 40px;display:flex;flex-direction:column;gap:4px}
+body.menu-open .drawer{transform:translateX(0)}
+.drawer a{color:var(--cream);text-decoration:none;font-weight:500;font-size:30px;letter-spacing:-0.02em;padding:18px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;transition:color .25s var(--ease),padding .35s var(--ease)}
+.drawer a .num{font-family:'Geist Mono',monospace;font-size:11px;letter-spacing:0.18em;color:var(--cream-faint);font-weight:400}
+.drawer a:hover{color:var(--green-sage);padding-left:8px}
+.drawer-foot{margin-top:auto;font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:0.18em;text-transform:uppercase;color:var(--cream-faint);display:flex;flex-direction:column;gap:8px}
+.drawer-scrim{position:fixed;inset:0;background:rgba(8,12,9,0.5);z-index:48;opacity:0;pointer-events:none;transition:opacity .35s var(--ease);backdrop-filter:blur(2px)}
+body.menu-open .drawer-scrim{opacity:1;pointer-events:auto}
+
+.btn{display:inline-flex;align-items:center;gap:10px;padding:13px 22px;border-radius:100px;font-size:13.5px;text-decoration:none;cursor:pointer;border:1px solid transparent;font-family:inherit;white-space:nowrap;transition:background .25s var(--ease),color .25s var(--ease),border-color .25s var(--ease),transform .25s var(--ease)}
+.btn-ghost{background:transparent;color:var(--cream);border-color:var(--border-strong)}
+.btn-ghost:hover{border-color:var(--green-sage);color:var(--green-sage)}
+.btn svg{width:13px;height:13px;flex-shrink:0}
+
+/* PAGE HEADER */
+.gal-hero{padding:160px 0 56px;position:relative}
+.gal-hero .eyebrow{color:var(--cream-faint);margin-bottom:22px;display:inline-flex;align-items:center;gap:14px}
+.gal-hero .eyebrow::before{content:"";width:32px;height:1px;background:var(--green-sage)}
+.gal-hero h1{font-family:'Geist',sans-serif;font-weight:300;font-size:clamp(46px,7vw,104px);line-height:0.96;letter-spacing:-0.03em;color:var(--cream);text-wrap:balance;max-width:14ch}
+.gal-hero h1 em{font-family:'Instrument Serif',serif;font-style:italic;color:var(--green-sage);font-weight:400}
+.gal-hero p{margin-top:26px;max-width:48ch;color:var(--cream-dim);font-size:16px;line-height:1.6}
+
+/* MASONRY (pinterest) */
+.masonry{
+  columns:4 290px;
+  column-gap:clamp(14px,1.6vw,22px);
+  padding-bottom:clamp(80px,11vw,150px);
+}
+.m-tile{
+  position:relative;display:block;width:100%;
+  break-inside:avoid;
+  margin:0 0 clamp(14px,1.6vw,22px);
+  aspect-ratio:var(--ratio,1);
+  border-radius:5px;border:1px solid var(--border);
+  background:var(--grad,var(--green-deep));
+  padding:0;cursor:pointer;overflow:hidden;
+  font-family:inherit;color:var(--cream);
+  transition:transform .4s var(--ease),border-color .3s var(--ease),box-shadow .4s var(--ease);
+}
+.m-tile::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(8,12,9,0.6),transparent 55%),radial-gradient(ellipse 80% 60% at 50% 25%,rgba(255,255,255,0.10),transparent 70%)}
+.m-tile:hover,.m-tile:focus-visible{transform:translateY(-5px);border-color:var(--green-sage);box-shadow:0 18px 40px rgba(0,0,0,0.38)}
+.m-name{position:absolute;left:16px;right:16px;top:14px;z-index:1;font-family:'Instrument Serif',serif;font-style:italic;font-size:clamp(16px,1.5vw,21px);line-height:1.05;color:var(--cream);opacity:0;transform:translateY(-6px);transition:opacity .3s var(--ease),transform .3s var(--ease)}
+.m-tile:hover .m-name,.m-tile:focus-visible .m-name{opacity:1;transform:none}
+.m-meta{position:absolute;inset:auto 0 0 0;z-index:1;display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:14px 16px}
+.m-tag{color:var(--cream);opacity:.92}
+.m-idx{color:var(--cream-faint)}
+
+footer{padding:60px 0 36px;border-top:1px solid var(--border);color:var(--cream-faint);font-size:12px}
+footer .row{display:flex;justify-content:space-between;flex-wrap:wrap;gap:18px;font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:0.18em;text-transform:uppercase}
+footer .legal{margin-top:30px;color:var(--cream-faint);font-size:11px;line-height:1.5;max-width:62ch}
+
+@media (prefers-reduced-motion:reduce){
+  .m-tile:hover,.m-tile:focus-visible{transform:none}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-arrow-l" viewBox="0 0 24 24"><path d="M19 12H5M11 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<!-- NAV -->
+<nav class="site" id="nav">
+  <div class="container">
+    <div class="row">
+      <a href="/" class="brand" aria-label="South Labs">
+        <img class="brand-logo" src="/assets/southlabs-logo.png" alt="South Labs" width="56" height="52">
+      </a>
+      <button class="menu-btn" id="menuBtn" aria-label="Abrir menú" aria-expanded="false">
+        <span class="bars"></span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- DRAWER -->
+<div class="drawer-scrim" id="drawerScrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <a href="/galeria"><span>Galería</span><span class="num">01</span></a>
+  <a href="/#proceso"><span>Proceso</span><span class="num">02</span></a>
+  <a href="/#variedades"><span>Variedades</span><span class="num">03</span></a>
+  <a href="/#faq"><span>FAQ</span><span class="num">04</span></a>
+  <a href="/#contacto"><span>Contacto</span><span class="num">05</span></a>
+  <div class="drawer-foot">
+    <span>hola@southlabs.ar</span>
+    <span>REPROCANN — Cultivo legal</span>
+  </div>
+</aside>
+
+<!-- HEADER -->
+<header class="gal-hero">
+  <div class="container">
+    <div class="eyebrow mono">— Galería · {galleryItems.length} imágenes</div>
+    <h1>El cultivo, <em>de cerca.</em></h1>
+    <p>Del banco genético al frasco curado. Cada imagen, un momento del proceso. Tocá cualquiera para verla en grande.</p>
+  </div>
+</header>
+
+<!-- MASONRY -->
+<main class="container">
+  <div class="masonry">
+    {tiles.map((it, n) => (
+      <button class="m-tile" data-lb-index={n % galleryItems.length} style={`--ratio:${it.ratio};--grad:${it.grad}`} aria-label={`Ampliar: ${it.title}`}>
+        <span class="m-name">{it.title}</span>
+        <span class="m-meta">
+          <span class="m-tag mono">{it.tag}</span>
+          <span class="m-idx mono">{String(it.id).padStart(2, "0")}</span>
+        </span>
+      </button>
+    ))}
+  </div>
+</main>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="row">
+      <div><a href="/" class="btn btn-ghost"><svg><use href="#i-arrow-l"/></svg> Volver al inicio</a></div>
+      <div>REPROCANN — Cultivo legal</div>
+      <div>hola@southlabs.ar</div>
+      <div>© 2026</div>
+    </div>
+    <p class="legal">Contenido informativo. La venta de cannabis para uso adulto no está habilitada en Argentina. South Labs opera bajo el marco del Programa REPROCANN (Ley 27.350) para producción y acceso medicinal a través de profesionales de la salud habilitados.</p>
+  </div>
+</footer>
+
+<Lightbox items={galleryItems} />
+
+<script is:inline>
+/* nav drawer */
+const menuBtn = document.getElementById("menuBtn");
+const drawer = document.getElementById("drawer");
+const drawerScrim = document.getElementById("drawerScrim");
+function setMenu(open){
+  document.body.classList.toggle("menu-open", open);
+  menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  drawer.setAttribute("aria-hidden", open ? "false" : "true");
+}
+menuBtn.addEventListener("click", () => setMenu(!document.body.classList.contains("menu-open")));
+drawerScrim.addEventListener("click", () => setMenu(false));
+drawer.querySelectorAll("a").forEach(a => a.addEventListener("click", () => setMenu(false)));
+document.addEventListener("keydown", e => { if(e.key === "Escape") setMenu(false); });
+
+/* nav scroll state */
+const nav = document.getElementById("nav");
+function onScrollNav(){ if(window.scrollY > 8) nav.classList.add("scrolled"); else nav.classList.remove("scrolled"); }
+onScrollNav();
+window.addEventListener("scroll", onScrollNav, { passive:true });
+</script>
+
+</body>
+</html>

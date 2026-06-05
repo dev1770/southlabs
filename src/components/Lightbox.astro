@@ -1,0 +1,190 @@
+---
+// Shared lightbox dialog. Drop <Lightbox items={galleryItems} /> once per page,
+// then any element with data-lb-index="N" (and the gallery markup below) opens
+// item N enlarged. Navigates the full `items` set regardless of the DOM order
+// or how many duplicate thumbnails exist (the carousel clones its tiles).
+import type { GalleryItem } from "../data/gallery";
+interface Props { items: GalleryItem[]; }
+const { items } = Astro.props;
+---
+
+<dialog class="lb" id="lightbox" aria-label="Imagen ampliada">
+  <button class="lb-close" id="lbClose" aria-label="Cerrar (Esc)">
+    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+  </button>
+
+  <button class="lb-nav lb-prev" id="lbPrev" aria-label="Anterior">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="lb-nav lb-next" id="lbNext" aria-label="Siguiente">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+
+  <figure class="lb-figure" id="lbFigure">
+    <div class="lb-frame" id="lbFrame"></div>
+    <figcaption class="lb-cap">
+      <span class="lb-tag mono" id="lbTag"></span>
+      <span class="lb-title" id="lbTitle"></span>
+      <span class="lb-count mono" id="lbCount"></span>
+    </figcaption>
+  </figure>
+</dialog>
+
+<script type="application/json" id="lbData" set:html={JSON.stringify(items)}></script>
+
+<style>
+  .lb{
+    width:min(1100px,94vw);
+    max-width:none;
+    max-height:92vh;
+    border:none;
+    background:transparent;
+    color:var(--cream,#E8E2D4);
+    padding:0;
+    overflow:visible;
+  }
+  .lb::backdrop{
+    background:rgba(8,12,9,0.82);
+    backdrop-filter:blur(8px) saturate(120%);
+    -webkit-backdrop-filter:blur(8px) saturate(120%);
+  }
+  /* enter animation */
+  .lb[open]{ animation:lbIn .32s cubic-bezier(0.22,1,0.36,1); }
+  .lb[open]::backdrop{ animation:lbFade .32s ease; }
+  @keyframes lbIn{ from{opacity:0;transform:translateY(14px) scale(.98)} to{opacity:1;transform:none} }
+  @keyframes lbFade{ from{opacity:0} to{opacity:1} }
+
+  .lb-figure{ margin:0; display:flex; flex-direction:column; gap:18px; }
+  .lb-frame{
+    width:100%;
+    aspect-ratio:var(--lb-ratio,1.4);
+    max-height:74vh;
+    border-radius:6px;
+    border:1px solid rgba(232,226,212,0.14);
+    background:var(--lb-grad,#3B5A3A);
+    box-shadow:0 30px 80px rgba(0,0,0,0.5);
+    position:relative;
+    overflow:hidden;
+  }
+  .lb-frame::after{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(ellipse 70% 60% at 50% 30%,rgba(255,255,255,0.10),transparent 70%);
+    pointer-events:none;
+  }
+  .lb-cap{
+    display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;
+    padding:0 2px;
+  }
+  .lb-tag{
+    color:var(--green-sage,#8FA68B);
+    border:1px solid rgba(232,226,212,0.18);
+    padding:5px 11px;border-radius:100px;
+  }
+  .lb-title{
+    font-family:'Instrument Serif',serif;font-style:italic;
+    font-size:clamp(22px,3vw,32px);line-height:1;color:var(--cream,#E8E2D4);
+    margin-right:auto;
+  }
+  .lb-count{ color:rgba(232,226,212,0.45); letter-spacing:0.22em; }
+
+  .lb-close,.lb-nav{
+    position:fixed;z-index:2;
+    display:inline-flex;align-items:center;justify-content:center;
+    background:rgba(20,27,22,0.7);
+    border:1px solid rgba(232,226,212,0.18);
+    color:var(--cream,#E8E2D4);
+    border-radius:100px;cursor:pointer;
+    transition:background .2s ease,border-color .2s ease,transform .2s ease;
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  }
+  .lb-close:hover,.lb-nav:hover{ background:rgba(143,166,139,0.22);border-color:var(--green-sage,#8FA68B); }
+  .lb-close{ top:max(18px,env(safe-area-inset-top));right:18px;width:46px;height:46px; }
+  .lb-nav{ top:50%;transform:translateY(-50%);width:52px;height:52px; }
+  .lb-nav:hover{ transform:translateY(-50%) scale(1.06); }
+  .lb-prev{ left:max(14px,env(safe-area-inset-left)); }
+  .lb-next{ right:max(14px,env(safe-area-inset-right)); }
+
+  @media (max-width:720px){
+    .lb{ width:96vw; }
+    .lb-nav{ top:auto;bottom:max(20px,env(safe-area-inset-bottom));transform:none;width:48px;height:48px; }
+    .lb-nav:hover{ transform:none; }
+    .lb-prev{ left:24px; }
+    .lb-next{ right:24px; }
+    .lb-frame{ max-height:62vh; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .lb[open],.lb[open]::backdrop{ animation:none; }
+  }
+</style>
+
+<script>
+  const dlg = document.getElementById("lightbox") as HTMLDialogElement | null;
+  const dataEl = document.getElementById("lbData");
+  if (dlg && dataEl) {
+    type Item = { id:number; title:string; tag:string; ratio:number; grad:string };
+    const items: Item[] = JSON.parse(dataEl.textContent || "[]");
+    const frame = document.getElementById("lbFrame")!;
+    const tagEl = document.getElementById("lbTag")!;
+    const titleEl = document.getElementById("lbTitle")!;
+    const countEl = document.getElementById("lbCount")!;
+    const fig = document.getElementById("lbFigure")!;
+    let cur = 0;
+
+    function render(i: number) {
+      cur = (i + items.length) % items.length;
+      const it = items[cur];
+      frame.style.setProperty("--lb-grad", it.grad);
+      frame.style.setProperty("--lb-ratio", String(it.ratio));
+      tagEl.textContent = it.tag;
+      titleEl.textContent = it.title;
+      countEl.textContent = String(cur + 1).padStart(2, "0") + " / " + String(items.length).padStart(2, "0");
+    }
+    function open(i: number) {
+      render(i);
+      if (!dlg!.open) dlg!.showModal();
+    }
+    const next = () => render(cur + 1);
+    const prev = () => render(cur - 1);
+
+    // wire every thumbnail on the page
+    document.querySelectorAll<HTMLElement>("[data-lb-index]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const idx = parseInt(el.dataset.lbIndex || "0", 10);
+        open(idx);
+      });
+    });
+
+    document.getElementById("lbClose")!.addEventListener("click", () => dlg.close());
+    document.getElementById("lbNext")!.addEventListener("click", next);
+    document.getElementById("lbPrev")!.addEventListener("click", prev);
+
+    // click on the backdrop (outside the figure) closes
+    dlg.addEventListener("click", (e) => {
+      if (!fig.contains(e.target as Node) &&
+          !(e.target as HTMLElement).closest(".lb-nav, .lb-close")) {
+        dlg.close();
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (!dlg.open) return;
+      if (e.key === "ArrowRight") { e.preventDefault(); next(); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); prev(); }
+    });
+
+    // touch swipe
+    let sx = 0, sy = 0;
+    fig.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+    fig.addEventListener("touchend", (e) => {
+      const dx = e.changedTouches[0].clientX - sx;
+      const dy = e.changedTouches[0].clientY - sy;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) { dx < 0 ? next() : prev(); }
+    }, { passive: true });
+
+    // lock body scroll while open (belt-and-braces; <dialog> mostly handles it)
+    const mo = new MutationObserver(() => {
+      document.body.style.overflow = dlg.open ? "hidden" : "";
+    });
+    mo.observe(dlg, { attributes: true, attributeFilter: ["open"] });
+  }
+</script>

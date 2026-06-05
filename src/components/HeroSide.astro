@@ -1,0 +1,593 @@
+---
+/*
+  HeroSide — South Labs hero "modelo a la derecha, texto a la izquierda"
+  ----------------------------------------------------------------------
+  Variante alternativa de la hero (swappeable con HeroSplit.astro desde
+  index.astro). NO parte el modelo en 2. En su lugar:
+
+    · Layout en 2 columnas: izq = título + subtítulo + CTAs ESTÁTICOS
+      (los mismos textos que HeroSplit revelaba tras el split, pero ya
+      visibles de entrada). Der = la planta 3D entera (mismo GLB).
+
+    · onScroll el efecto de salida es "barrido + giro + fade": el modelo
+      rota sobre Y y se desliza/barre hacia la derecha mientras escala
+      hacia abajo y el canvas se desvanece; los textos suben y hacen
+      fade. Al terminar, el sticky se libera y da paso a la sección
+      siguiente de forma limpia.
+
+  Autocontenido: trae su propio three.js, CSS global y motor de scroll.
+  Las vars globales (--bg, --green-sage, --cream, --ease, --gutter, …)
+  viven en index.astro.
+*/
+---
+
+<!-- HERO (escenario sticky: texto izq + modelo der, barrido al salir) -->
+<div class="hero2-scroll" id="hero2Scroll">
+  <div class="hero2-sticky">
+    <!-- BG: imagen (placeholder — reemplazar luego) con parallax + scrim/tinte -->
+    <div class="hero2-bgimg" id="hero2BgImg"></div>
+    <div class="hero2-bg" id="hero2Scrim"></div>
+    <!-- partículas de ambiente -->
+    <canvas class="hero2-particles" id="hero2Particles" aria-hidden="true"></canvas>
+
+    <div class="hero2-meta mono" aria-hidden="true">
+      <span>REPROCANN · Cultivo legal</span>
+      <span>AMBA · Argentina</span>
+    </div>
+
+    <!-- DERECHA: planta 3D entera (capa full-height, anclada al bottom) -->
+    <div class="hero2-stage" id="hero2Stage">
+      <div class="h2-glow" id="h2Glow"></div>
+      <canvas id="plantCanvas2"></canvas>
+    </div>
+
+    <!-- haze / niebla atmosférica suave sobre el modelo -->
+    <div class="hero2-haze" aria-hidden="true"></div>
+    <!-- partículas en PRIMER PLANO (delante del modelo, bokeh borroso) -->
+    <canvas class="hero2-particles hero2-particles-front" id="hero2ParticlesFront" aria-hidden="true"></canvas>
+
+    <!-- IZQUIERDA: textos estáticos -->
+    <div class="hero2-grid">
+      <div class="hero2-text" id="hero2Text">
+        <h1 class="h2-title">Cannabis premium para los que <em>saben de calidad.</em></h1>
+        <p class="h2-sub">Cultivamos indoor y crecemos el mejor producto: legal, seguro y obsesionados por cada detalle.</p>
+        <div class="h2-actions">
+          <a href="#contacto" class="btn btn-primary">Sumate <svg><use href="#i-arrow"/></svg></a>
+          <a href="#como-trabajamos" class="btn btn-ghost">Cómo trabajamos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero2-grain"></div>
+    <div class="hero2-vignette"></div>
+
+    <div class="scroll-cue mono" id="h2Cue" aria-hidden="true">
+      <span class="line"></span>
+      <span>Scroll</span>
+    </div>
+
+    <div class="ov-prog"><i id="h2ProgBar"></i></div>
+  </div>
+</div>
+
+<style is:global>
+/* ============================================================
+   HERO (variante SIDE) — texto izq + planta WebGL der
+   ============================================================ */
+.hero2-scroll{
+  position:relative;
+  height:190vh;            /* salida más lenta; el contenido sale justo al unpin (sin pantalla vacía) */
+}
+.hero2-sticky{
+  position:sticky;top:0;
+  height:100vh;
+  overflow:hidden;
+  isolation:isolate;
+  background:#000;          /* sólido negro detrás de BG y modelo (estado "off") */
+}
+/* imagen de fondo (placeholder) — overscan para tener recorrido de parallax */
+.hero2-bgimg{
+  position:absolute;inset:-9% -5%;z-index:0;pointer-events:none;
+  background-image:url("/assets/hero-bg.png");
+  background-size:cover;background-position:center;
+  filter:saturate(0.82) brightness(0.92) contrast(1.04);
+  opacity:0;                 /* prende vía JS con el flicker; ver fallback no-3d */
+  will-change:transform,opacity;
+}
+/* tinte/scrim para matchear el sitio y mantener legible el texto a la izq */
+.hero2-bg{
+  position:absolute;inset:-10%;z-index:1;pointer-events:none;
+  background:
+    linear-gradient(100deg, var(--bg) 6%, rgba(14,20,16,0.78) 26%, rgba(14,20,16,0.28) 56%, rgba(14,20,16,0) 82%),
+    radial-gradient(ellipse 60% 50% at 50% 112%, rgba(143,166,139,0.16), transparent 70%),
+    radial-gradient(ellipse 52% 46% at 78% 40%, rgba(59,90,58,0.20), transparent 64%);
+}
+.hero2-particles{
+  position:absolute;inset:0;z-index:1;pointer-events:none;
+  width:100%;height:100%;display:block;
+}
+/* haze atmosférico: glow sage tenue por encima del modelo (da profundidad/aire) */
+.hero2-haze{
+  position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:
+    radial-gradient(ellipse 76% 58% at 62% 46%, rgba(176,198,170,0.11), transparent 72%),
+    radial-gradient(ellipse 120% 50% at 50% 92%, rgba(143,166,139,0.10), transparent 70%);
+  mix-blend-mode:screen;
+  opacity:.85;
+}
+/* capa frontal de partículas: por delante del modelo, desenfocada (bokeh) */
+.hero2-particles-front{
+  z-index:2;
+  filter:blur(1.5px);
+  opacity:.9;
+}
+
+/* IZQUIERDA: texto (capa overlay, columna izquierda) */
+.hero2-grid{
+  position:absolute;inset:0;z-index:3;
+  display:flex;align-items:center;
+  padding:96px var(--gutter) 0;
+  max-width:var(--container);
+  margin:0 auto;
+  left:0;right:0;
+  pointer-events:none;
+}
+.hero2-text{
+  position:relative;
+  display:flex;flex-direction:column;align-items:flex-start;
+  max-width:min(52%,620px);
+  will-change:transform,opacity;
+}
+.hero2-text .btn{pointer-events:auto}
+h1.h2-title{
+  font-family:'Fraunces','Geist',sans-serif;font-weight:700;
+  font-size:clamp(46px,5.6vw,108px);line-height:1.04;letter-spacing:-0.04em;
+  color:var(--cream);max-width:13ch;text-wrap:balance;
+  text-shadow:0 4px 60px rgba(8,12,9,0.5);
+}
+h1.h2-title em{
+  font-family:'Instrument Serif',serif;font-style:italic;font-weight:400;
+  letter-spacing:-0.012em;color:var(--green-sage);padding:0 .02em;
+}
+.h2-sub{
+  margin-top:30px;
+  font-size:clamp(15px,1.35vw,19px);color:var(--cream-dim);max-width:44ch;line-height:1.55;
+}
+.h2-actions{
+  margin-top:40px;
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+}
+
+/* DERECHA: escenario 3D — full-height, anclado al bottom de la hero */
+.hero2-stage{
+  position:absolute;z-index:2;
+  top:0;right:0;bottom:0;
+  width:56%;
+  pointer-events:none;
+}
+.h2-glow{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+  --acc:143,166,139;
+  background:
+    radial-gradient(ellipse 60% 64% at 54% 46%, rgba(var(--acc),0.22), transparent 68%),
+    radial-gradient(ellipse 34% 70% at 58% 44%, rgba(255,184,112,0.16), transparent 70%),
+    radial-gradient(ellipse 26% 74% at 52% 48%, rgba(255,250,240,0.12), transparent 74%);
+  filter:blur(34px);   /* halo más suave y difuso */
+  mix-blend-mode:screen;
+  opacity:.6;
+}
+#plantCanvas2{
+  position:relative;z-index:1;
+  width:100%;height:100%;display:block;
+  opacity:0;transition:opacity .9s var(--ease);
+  will-change:opacity,transform;
+}
+#plantCanvas2.ready{opacity:1}
+
+/* texturas / viñeta sobre todo */
+.hero2-grain{
+  position:absolute;inset:0;z-index:3;pointer-events:none;opacity:0.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+.hero2-vignette{
+  position:absolute;inset:0;z-index:3;pointer-events:none;
+  background:radial-gradient(ellipse 92% 84% at 50% 46%, transparent 54%, rgba(8,12,9,0.5) 100%);
+}
+
+/* meta arriba-derecha */
+.hero2-meta{
+  position:absolute;top:108px;right:var(--gutter);z-index:5;pointer-events:none;
+  color:var(--cream-faint);text-align:right;display:flex;flex-direction:column;gap:6px;
+}
+.hero2-meta span{white-space:nowrap}
+
+/* scroll cue (acotado al hero) */
+.hero2-sticky .scroll-cue{
+  position:absolute;left:var(--gutter);bottom:30px;z-index:5;
+  display:inline-flex;align-items:center;gap:12px;color:var(--cream-faint);pointer-events:none;
+}
+.hero2-sticky .scroll-cue .line{
+  display:inline-block;width:36px;height:1px;
+  background:linear-gradient(to right,var(--cream-faint),transparent);
+  animation:pulse 2.4s var(--ease) infinite;transform-origin:left center;
+}
+
+/* riel de progreso */
+.hero2-sticky .ov-prog{
+  position:absolute;left:0;right:0;bottom:0;height:2px;z-index:5;
+  background:rgba(232,226,212,0.07);overflow:hidden;
+}
+.hero2-sticky .ov-prog i{
+  display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;
+  background:linear-gradient(to right,var(--green-deep),var(--green-sage));
+}
+
+/* (el texto se revela con la cortina del intro; el JS controla su
+   fade/desplazamiento al hacer scroll, así que acá queda estático) */
+
+/* fallback si WebGL / Three / el modelo no cargan */
+.no-3d #plantCanvas2{display:none}
+.no-3d .hero2-scroll{height:100vh}
+.no-3d .h2-glow{opacity:.5}
+.no-3d .hero2-bgimg{opacity:.92}   /* sin 3D el JS no corre → mostrar BG igual */
+
+/* responsive: una columna, modelo de fondo tenue detrás del texto */
+@media (max-width:860px){
+  .hero2-scroll{height:190vh}
+  .hero2-grid{padding-top:120px}
+  .hero2-text{max-width:none}
+  .hero2-stage{
+    inset:0;width:100%;z-index:0;opacity:.32;
+  }
+  .hero2-text .h2-title{font-size:clamp(44px,11vw,72px)}
+}
+@media (max-width:520px){.hero2-meta{display:none}}
+@media (prefers-reduced-motion: reduce){
+  .hero2-sticky .scroll-cue .line{animation:none}
+}
+</style>
+
+<!-- Three.js r128 + GLTFLoader (pinned), luego el motor del hero -->
+<script is:inline src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script is:inline src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script is:inline>
+/* ============================================================
+   SOUTH LABS — Hero "SIDE": planta entera a la derecha.
+   onScroll: barrido + giro + fade (sale hacia la derecha).
+   ============================================================ */
+(function(){
+  "use strict";
+  const canvas = document.getElementById("plantCanvas2");
+  const stage  = document.getElementById("hero2Stage");
+  if(typeof THREE === "undefined" || !THREE.GLTFLoader || !canvas || !stage){
+    document.documentElement.classList.add("no-3d");
+    return;
+  }
+
+  const prefersReduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const isMobile = matchMedia("(max-width:760px)").matches;
+
+  /* orientación del modelo (igual criterio que HeroSplit) */
+  const ORIENT_X = 0;
+  const ORIENT_Y = Math.PI/2;
+  const TARGET_SIZE = 4.4;   // agrandado: la planta llena el alto del frame
+  let baseY = 0;             // y de la base del modelo (se ancla al bottom en resize)
+
+  /* salida: barrido + giro + fade (menos canales = más limpio) */
+  const SWEEP_X   = 3.8;            // se desliza a la derecha, pero "apenas"
+  const SWEEP_ROT = Math.PI*0.20;   // giro sutil sobre Y (~36°), bajado para no "tumbear"
+  const SWEEP_LIFT= 0.2;            // elevación apenas perceptible
+  const ACC = { light:0xCBD8B6, css:"143,166,139" };
+
+  /* ---------- renderer / escena ---------- */
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobile ? 2 : 2.2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.98;   // más bajo = moody, menos lavado
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  camera.position.set(0, 0.2, 6.6);
+  camera.lookAt(0, 0.1, 0);
+
+  const amb  = new THREE.AmbientLight(0x8FA68B, 0.34); scene.add(amb);   // bajado: más contraste/moody
+  const key  = new THREE.DirectionalLight(0xF3EEDF, 1.18); key.position.set(2.6, 4.4, 4.6); scene.add(key);
+  // rim CÁLIDA desde atrás-derecha → borde dorado que separa la planta del fondo
+  const rim  = new THREE.DirectionalLight(0xFFB070, 1.15); rim.position.set(4.0, 2.4, -3.6); scene.add(rim);
+  const fill = new THREE.DirectionalLight(0xAEC4AE, 0.30); fill.position.set(0, -2.2, 3.2);  scene.add(fill);
+
+  /* ----- secuencia de ENCENDIDO ("flicker-on" tipo tubo fluorescente) -----
+     al cargar el modelo: la planta titila un par de veces y prende fija;
+     ~0.5s después prende el BG con su propio mini-parpadeo. Todo se logra
+     modulando la INTENSIDAD de las luces (no se toca geometría ni se agregan
+     libs). El reduced-motion lo reemplaza por un fade simple (anti-mareo). */
+  const LIT_BASE = [[amb,0.34],[key,1.18],[rim,1.15],[fill,0.30]];   // intensidades nominales
+  // envelope de la PLANTA (t en s): titileo → encendido fijo
+  const BOOT_P  = [[0,0],[0.05,0.9],[0.10,0.07],[0.17,0.7],[0.22,0.0],
+                   [0.40,0.0],[0.45,1.0],[0.50,0.12],[0.56,0.92],[0.60,0.18],[0.70,1.0]];
+  // envelope del BG: arranca después y prende casi sin titilar
+  const BOOT_BG = [[0,0],[0.05,0.75],[0.10,0.12],[0.18,1.0]];
+  const BG_DELAY = 0.5;     // el BG prende ~0.5s (de envelope) después que la planta
+  const BOOT_DELAY = 0.7;   // espera tras abrir la cortina antes del 1er blip (s reales)
+  const BOOT_SLOW  = 2.7;   // >1 = más lento; ralentiza todo el flicker para verlo bien
+  function envAt(kf, t){
+    if(t <= 0) return 0;
+    const last = kf[kf.length-1];
+    if(t >= last[0]) return last[1];
+    for(let i=0;i<kf.length-1;i++){
+      const a=kf[i], b=kf[i+1];
+      if(t>=a[0] && t<=b[0]){ const k=(t-a[0])/(b[0]-a[0]); return a[1]+(b[1]-a[1])*k; }
+    }
+    return last[1];
+  }
+  let bootStart = -1;       // se setea cuando arranca la secuencia
+  let modelReady = false;   // GLB cargado
+  let introOpen = false;    // la cortina del intro ya abrió
+  // arranca el flicker SOLO cuando el modelo cargó Y la cortina abrió,
+  // así el encendido no sucede tapado por el intro (se ve el reveal).
+  function armBoot(){ if(modelReady && introOpen && bootStart < 0) bootStart = clock.elapsedTime + BOOT_DELAY; }
+  window.addEventListener("sl:intro-open", () => { introOpen = true; armBoot(); });
+  // red de seguridad: si la señal nunca llega, arrancá igual pasado el intro
+  setTimeout(() => { introOpen = true; armBoot(); }, 2600);
+
+  /* raíz: idle (parallax/respiración) → dentro va el grupo de salida */
+  const plantRoot = new THREE.Group();
+  const exitGroup = new THREE.Group();   // recibe el barrido+giro de salida
+  plantRoot.add(exitGroup);
+  scene.add(plantRoot);
+
+  let loaded = false;
+
+  function orientAndFit(model){
+    const pivot = new THREE.Group();
+    pivot.add(model);
+    model.rotation.set(ORIENT_X, ORIENT_Y, 0);
+    pivot.updateMatrixWorld(true);
+    let box = new THREE.Box3().setFromObject(pivot);
+    const size = new THREE.Vector3(); box.getSize(size);
+    const s = TARGET_SIZE / Math.max(size.x, size.y, size.z);
+    pivot.scale.setScalar(s);
+    pivot.updateMatrixWorld(true);
+    box = new THREE.Box3().setFromObject(pivot);
+    const center = new THREE.Vector3(); box.getCenter(center);
+    // centrar en X/Z, pero anclar la BASE (tallo) en y=0 → luego baseY la lleva al bottom
+    pivot.position.x -= center.x;
+    pivot.position.z -= center.z;
+    pivot.position.y -= box.min.y;
+    pivot.updateMatrixWorld(true);
+    return pivot;
+  }
+
+  const gltfLoader = new THREE.GLTFLoader();
+  gltfLoader.load("/assets/marijuana_plant.glb",
+    (gltf) => {
+      const model = orientAndFit(gltf.scene);
+      model.traverse(o => {
+        if(!o.isMesh) return;
+        o.frustumCulled = false;
+        // desaturar + oscurecer el modelo en display-space, sin postproceso:
+        // inyectamos al final del fragment shader una mezcla hacia luminancia.
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach(m => {
+          if(!m) return;
+          m.onBeforeCompile = (shader) => {
+            shader.fragmentShader = shader.fragmentShader.replace(
+              "#include <dithering_fragment>",
+              [
+                "#include <dithering_fragment>",
+                "float _luma = dot(gl_FragColor.rgb, vec3(0.299,0.587,0.114));",
+                "gl_FragColor.rgb = mix(vec3(_luma), gl_FragColor.rgb, 0.70);", // -30% saturación
+                "gl_FragColor.rgb *= 0.90;"                                     // leve oscurecido
+              ].join("\n")
+            );
+          };
+          m.needsUpdate = true;
+        });
+      });
+      exitGroup.add(model);
+      loaded = true;
+      modelReady = true;
+      armBoot();                       // dispara el "flicker-on" si la cortina ya abrió
+      canvas.classList.add("ready");
+    },
+    undefined,
+    (err) => {
+      console.warn("[HeroSide] no se pudo cargar el modelo 3D:", err);
+      document.documentElement.classList.add("no-3d");
+    }
+  );
+
+  /* ---------- progreso de scroll (pin + scrub vía sticky) ---------- */
+  const scrollSection = document.getElementById("hero2Scroll");
+  let targetP = 0, curP = 0;
+  function computeProgress(){
+    const rect = scrollSection.getBoundingClientRect();
+    const total = rect.height - window.innerHeight;
+    const p = total > 0 ? (-rect.top) / total : 0;
+    targetP = Math.max(0, Math.min(1, p));
+  }
+  window.addEventListener("scroll", computeProgress, { passive:true });
+
+  const elText  = document.getElementById("hero2Text");
+  const elCue   = document.getElementById("h2Cue");
+  const elGlow  = document.getElementById("h2Glow");
+  const elProg  = document.getElementById("h2ProgBar");
+  const elBgImg = document.getElementById("hero2BgImg");
+  const elScrim = document.getElementById("hero2Scrim");
+
+  let tmx = 0, tmy = 0, mx = 0, my = 0;
+  window.addEventListener("pointermove", e => {
+    tmx = (e.clientX / window.innerWidth  - 0.5) * 2;
+    tmy = (e.clientY / window.innerHeight - 0.5) * 2;
+  }, { passive:true });
+
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const smooth  = (a,b,v) => { const t = clamp01((v-a)/(b-a)); return t*t*(3-2*t); };
+  const easeInOut = t => t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;  // smooth simétrico
+  const lerp    = (a,b,t) => a+(b-a)*t;
+
+  /* ---------- resize: el canvas se ajusta a SU contenedor ---------- */
+  function resize(){
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if(w === 0 || h === 0) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h;
+    camera.position.z = 6.4;
+    camera.updateProjectionMatrix();
+    // anclar la base del modelo al borde inferior del frame (un poco más abajo
+    // para que el tallo se hunda fuera de cuadro y no se vea la base)
+    const halfH = Math.tan((camera.fov * Math.PI/180) / 2) * camera.position.z;
+    baseY = 0.1 - halfH - 0.55;   // 0.1 = y que mira la cámara en z=0
+    plantRoot.position.y = baseY;
+  }
+  window.addEventListener("resize", resize);
+  if(window.ResizeObserver){ new ResizeObserver(resize).observe(stage); }
+
+  /* ---------- loop ---------- */
+  const clock = new THREE.Clock();
+  function frame(){
+    requestAnimationFrame(frame);
+    const time = clock.elapsedTime; clock.getDelta();
+
+    /* ----- encendido: flicker de luces (planta) + reveal del BG ----- */
+    let litP = 0, litBg = 0;
+    if(bootStart >= 0){
+      const et = (time - bootStart) / BOOT_SLOW;   // tiempo de envelope: ya con delay y ralentizado
+      if(prefersReduced){ litP = smooth(0,0.5,et); litBg = smooth(0.3,0.95,et); }
+      else { litP = envAt(BOOT_P, et); litBg = envAt(BOOT_BG, et - BG_DELAY); }
+    }
+    for(const [l,base] of LIT_BASE) l.intensity = base * litP;
+
+    curP = lerp(curP, targetP, 0.085);   // lerp más suave = salida más fluida
+    let p = curP;
+    if(window.SH_DEBUG_P != null) p = window.SH_DEBUG_P;
+
+    /* STAGGER: el texto libera la lectura primero (0.12→0.45); la planta
+       barre después (0.30→0.98). Así no salen amontonados. */
+    const out = easeInOut(clamp01((p - 0.30) / (0.98 - 0.30)));
+    const calm = 1 - smooth(0.18, 0.45, p);   // idle se apaga cuando arranca el barrido
+
+    /* barrido + giro + escala (shrink más leve: 0.32) */
+    exitGroup.position.x = out * SWEEP_X;
+    exitGroup.position.y = out * SWEEP_LIFT;
+    exitGroup.rotation.y = out * SWEEP_ROT;
+    exitGroup.scale.setScalar(1 - out * 0.32);
+
+    /* idle: respiración + parallax con el puntero (se calma al salir) */
+    if(!prefersReduced){
+      mx = lerp(mx, tmx, 0.05); my = lerp(my, tmy, 0.05);
+      plantRoot.rotation.y = (Math.sin(time*0.30)*0.12 + mx*0.16) * calm;
+      plantRoot.rotation.x = (Math.sin(time*0.24)*0.035 - my*0.09) * calm;
+      plantRoot.scale.setScalar(1 + Math.sin(time*0.9)*0.01*calm);
+    }
+
+    /* fade del canvas + glow al barrer (termina recién ~p=0.98, en el unpin) */
+    const vis = 1 - smooth(0.74, 0.99, p);
+    canvas.style.opacity = (loaded ? vis : 0).toFixed(3);
+    if(elGlow){ elGlow.style.opacity = (vis*0.6*litP).toFixed(3); elGlow.style.setProperty("--acc", ACC.css); }
+
+    /* texto: gesto UNIFICADO con la planta (deriva a la der + sube) + blur,
+       snappy y temprano para "correrse del camino" en vez de agonizar. */
+    if(elText){
+      const tOut = easeInOut(clamp01((p - 0.12) / (0.45 - 0.12)));
+      elText.style.opacity = (1 - tOut).toFixed(3);
+      const tx = (tOut * 26).toFixed(1);     // deriva hacia la planta (der)
+      const ty = (-tOut * 110).toFixed(1);   // sube con más viaje
+      elText.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
+      elText.style.filter = tOut > 0.001 ? `blur(${(tOut * 5).toFixed(2)}px)` : "";
+    }
+    if(elCue) elCue.style.opacity = (1 - smooth(0.0, 0.12, p)).toFixed(3);
+    if(elProg) elProg.style.transform = `scaleX(${p.toFixed(3)})`;
+
+    /* BG: reveal por flicker (litBg) + parallax + CIERRE suave al final
+       (0.86→1) para que el unpin no corte en seco a opacidad full */
+    const bgClose = 1 - smooth(0.86, 1.0, p);
+    if(elScrim) elScrim.style.opacity = (litBg * bgClose).toFixed(3);   // el tinte verde prende con la imagen
+    if(elBgImg){
+      elBgImg.style.opacity = (0.92 * litBg * bgClose).toFixed(3);
+      if(!prefersReduced){
+        const px = mx * -14, py = my * -14 + p * 40;   // bg más lento que la planta → parallax
+        elBgImg.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0) scale(1.1)`;
+      }
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  resize();
+  computeProgress();
+  window.addEventListener("load", () => { resize(); computeProgress(); });
+  setTimeout(() => { resize(); computeProgress(); }, 250);
+  frame();
+})();
+</script>
+
+<script is:inline>
+/* ============================================================
+   HeroSide — partículas de ambiente en 2 CAPAS (2D canvas).
+   · fondo  → motas finas detrás del modelo (sutiles)
+   · frente → motas grandes/borrosas delante del modelo (bokeh)
+   Polvo que flota hacia arriba, tono sage, baja opacidad.
+   ============================================================ */
+(function(){
+  "use strict";
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const isMobile = matchMedia("(max-width:760px)").matches;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const rnd = (a,b) => a + Math.random()*(b-a);
+
+  function layer(canvas, cfg){
+    if(!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if(!ctx) return;
+    let w = 0, h = 0, parts = [];
+    const makePart = () => ({
+      x: Math.random()*w, y: Math.random()*h,
+      r: rnd(cfg.rMin, cfg.rMax),
+      vy: rnd(cfg.vyMin, cfg.vyMax),   // sube lento
+      vx: rnd(-cfg.vx, cfg.vx),
+      a: rnd(cfg.aMin, cfg.aMax),      // alpha
+      tw: rnd(0.4, 1.3), ph: Math.random()*Math.PI*2
+    });
+    function resize(){
+      w = canvas.clientWidth; h = canvas.clientHeight;
+      canvas.width = w*dpr; canvas.height = h*dpr;
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      if(parts.length === 0) parts = Array.from({length:cfg.count}, makePart);
+    }
+    window.addEventListener("resize", resize);
+    let t = 0;
+    function frame(){
+      requestAnimationFrame(frame);
+      if(w === 0 || h === 0){ resize(); return; }
+      t += 0.016;
+      ctx.clearRect(0,0,w,h);
+      for(const p of parts){
+        p.x += p.vx; p.y += p.vy;
+        if(p.y < -8){ p.y = h+8; p.x = Math.random()*w; }
+        if(p.x < -8) p.x = w+8; else if(p.x > w+8) p.x = -8;
+        const tw = 0.6 + 0.4*Math.sin(t*p.tw + p.ph);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(${cfg.rgb},${(p.a*tw).toFixed(3)})`;
+        ctx.fill();
+      }
+    }
+    resize(); setTimeout(resize, 250); frame();
+  }
+
+  // capa de fondo (detrás del modelo)
+  layer(document.getElementById("hero2Particles"), {
+    count: isMobile ? 26 : 52, rMin:0.6, rMax:2.2,
+    vyMin:-0.5, vyMax:-0.18, vx:0.12, aMin:0.08, aMax:0.34, rgb:"180,198,170"
+  });
+  // capa frontal (delante del modelo, bokeh) — desktop only por perf
+  if(!isMobile){
+    layer(document.getElementById("hero2ParticlesFront"), {
+      count:16, rMin:2.4, rMax:5.5,
+      vyMin:-0.34, vyMax:-0.12, vx:0.18, aMin:0.05, aMax:0.16, rgb:"200,214,188"
+    });
+  }
+})();
+</script>

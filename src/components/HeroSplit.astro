@@ -1,0 +1,378 @@
+---
+/*
+  HeroSplit — South Labs hero "planta que se parte en 2"
+  ------------------------------------------------------
+  Implementación del diseño `index-split.html` (Claude Design):
+  un escenario sticky de scroll donde una ÚNICA planta de cannabis 3D
+  (modelo real: /public/assets/marijuana_plant.glb) se PARTE por el
+  medio al hacer scroll — las dos mitades se abren hacia los costados
+  con rotación y perspectiva, un glow brota del centro y se revela el
+  título + subtítulo + CTAs como un proscenio.
+
+  El "split" sobre un modelo único se logra renderizándolo DOS veces,
+  cada copia recortada por un clipping-plane (mitad izquierda / derecha);
+  los planos siguen la matriz de cada mitad al abrirse.
+*/
+---
+
+<!-- HERO (escenario sticky que se parte) -->
+<div class="hero-scroll" id="heroScroll">
+  <div class="hero-sticky">
+    <div class="hero-bg"></div>
+    <div class="split-glow" id="splitGlow"></div>
+    <canvas id="plantCanvas"></canvas>
+    <div class="hero-grain"></div>
+    <div class="hero-vignette"></div>
+
+    <div class="hero-meta mono" aria-hidden="true">
+      <span>REPROCANN · Cultivo legal</span>
+      <span>AMBA · Argentina</span>
+    </div>
+
+    <div class="hero-overlay">
+      <div class="inner">
+        <h1 class="ov-title" id="ovTitle">Cannabis premium para los que <em>saben de calidad.</em></h1>
+        <div class="ov-sub-wrap" id="ovSub">
+          <p class="ov-sub">Cultivamos indoor y crecemos el mejor producto: legal, seguro y obsesionados por cada detalle.</p>
+          <div class="ov-actions">
+            <a href="#contacto" class="btn btn-primary">Sumate <svg><use href="#i-arrow"/></svg></a>
+            <a href="#como-trabajamos" class="btn btn-ghost">Cómo trabajamos</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="scroll-cue mono" id="ovCue" aria-hidden="true">
+      <span class="line"></span>
+      <span>Scroll para abrir</span>
+    </div>
+
+    <div class="ov-prog"><i id="ovProgBar"></i></div>
+  </div>
+</div>
+
+<style is:global>
+/* ============================================================
+   HERO — escenario sticky con planta WebGL que se parte
+   (vars globales --bg, --green-sage, etc. viven en index.astro)
+   ============================================================ */
+.hero-scroll{
+  position:relative;
+  height:320vh;            /* pista de scroll para el split */
+}
+.hero-sticky{
+  position:sticky;top:0;
+  height:100vh;
+  overflow:hidden;
+  isolation:isolate;
+}
+.hero-bg{
+  position:absolute;inset:-10%;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 112%, rgba(143,166,139,0.16), transparent 70%),
+    radial-gradient(ellipse 52% 42% at 18% 26%, rgba(59,90,58,0.24), transparent 65%);
+}
+.split-glow{
+  position:absolute;inset:0;z-index:1;pointer-events:none;opacity:0;
+  --acc:143,166,139;
+  background:
+    radial-gradient(ellipse 34% 60% at 50% 50%, rgba(var(--acc),0.55), transparent 62%),
+    radial-gradient(ellipse 16% 90% at 50% 50%, rgba(255,253,246,0.45), transparent 70%);
+  filter:blur(14px);
+  mix-blend-mode:screen;
+  transition:opacity .05s linear;
+}
+#plantCanvas{
+  position:absolute;inset:0;width:100%;height:100%;display:block;z-index:2;
+  opacity:0;transition:opacity .9s var(--ease);
+}
+#plantCanvas.ready{opacity:1}
+.hero-grain{
+  position:absolute;inset:0;z-index:3;pointer-events:none;opacity:0.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+.hero-vignette{
+  position:absolute;inset:0;z-index:3;pointer-events:none;
+  background:radial-gradient(ellipse 90% 80% at 50% 46%, transparent 52%, rgba(8,12,9,0.55) 100%);
+}
+
+/* contenido revelado entre las mitades */
+.hero-overlay{
+  position:absolute;inset:0;z-index:4;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:0 var(--gutter);pointer-events:none;
+}
+.hero-overlay .inner{max-width:1000px;display:flex;flex-direction:column;align-items:center}
+h1.ov-title{
+  font-family:'Fraunces','Geist',sans-serif;font-weight:700;
+  font-size:clamp(50px,8.6vw,142px);line-height:0.92;letter-spacing:-0.04em;
+  color:var(--cream);max-width:13ch;text-wrap:balance;opacity:0;
+  text-shadow:0 4px 60px rgba(8,12,9,0.5);
+}
+h1.ov-title em{
+  font-family:'Instrument Serif',serif;font-style:italic;font-weight:400;
+  letter-spacing:-0.012em;color:var(--green-sage);padding:0 .02em;
+}
+.ov-sub-wrap{opacity:0;display:flex;flex-direction:column;align-items:center;gap:30px;margin-top:34px}
+.ov-sub{
+  font-size:clamp(15px,1.35vw,19px);color:var(--cream-dim);max-width:48ch;line-height:1.55;
+}
+.ov-actions{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center;pointer-events:auto}
+
+/* scroll cue (acotado al hero — no choca con otras secciones) */
+.hero-sticky .scroll-cue{
+  position:absolute;left:var(--gutter);bottom:30px;z-index:5;
+  display:inline-flex;align-items:center;gap:12px;color:var(--cream-faint);pointer-events:none;
+}
+.hero-sticky .scroll-cue .line{
+  display:inline-block;width:36px;height:1px;
+  background:linear-gradient(to right,var(--cream-faint),transparent);
+  animation:pulse 2.4s var(--ease) infinite;transform-origin:left center;
+}
+
+/* riel de progreso del scroll, abajo del sticky */
+.ov-prog{
+  position:absolute;left:0;right:0;bottom:0;height:2px;z-index:5;
+  background:rgba(232,226,212,0.07);overflow:hidden;
+}
+.ov-prog i{
+  display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;
+  background:linear-gradient(to right,var(--green-deep),var(--green-sage));
+}
+
+/* meta arriba-derecha del sticky */
+.hero-meta{
+  position:absolute;top:108px;right:var(--gutter);z-index:5;pointer-events:none;
+  color:var(--cream-faint);text-align:right;display:flex;flex-direction:column;gap:6px;
+}
+.hero-meta span{white-space:nowrap}
+
+/* fallback si WebGL / Three / el modelo no cargan */
+.no-3d #plantCanvas{display:none}
+.no-3d .hero-overlay h1.ov-title,
+.no-3d .hero-overlay .ov-sub-wrap{opacity:1 !important;transform:none !important}
+.no-3d .hero-scroll{height:100vh}
+.no-3d .split-glow{opacity:.4}
+
+@media (max-width:520px){.hero-meta{display:none}}
+@media (prefers-reduced-motion: reduce){
+  .hero-sticky .scroll-cue .line{animation:none}
+}
+</style>
+
+<!-- Three.js r128 + GLTFLoader (pinned), luego el motor del hero -->
+<script is:inline src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script is:inline src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script is:inline>
+/* ============================================================
+   SOUTH LABS — Hero "planta que se parte en 2"
+   Modelo real (GLB) recortado en 2 mitades por clipping-planes;
+   se abren con el scroll (técnica pin + scrub vía sticky).
+   ============================================================ */
+(function(){
+  "use strict";
+  const canvas = document.getElementById("plantCanvas");
+  if(typeof THREE === "undefined" || !THREE.GLTFLoader || !canvas){
+    document.documentElement.classList.add("no-3d");
+    return;
+  }
+
+  /* ---------- config ---------- */
+  const CFG = { spread:3.4, glow:70, idleRotate:true, accent:"sage" };
+  const ACCENTS = {
+    sage:   { light:0xCBD8B6, css:"143,166,139" },
+    amber:  { light:0xF0C879, css:"214,168,78"  },
+    violet: { light:0xC7AEEE, css:"155,123,212" }
+  };
+  const prefersReduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const isMobile = matchMedia("(max-width:760px)").matches;
+
+  /* orientación del modelo: el tallo del GLB ya está sobre el eje Y (vertical),
+     así que NO lo inclinamos en X. Lo giramos 90° sobre el eje vertical (Y) para
+     presentar la copa ancha (eje Z) de frente y que el split izq/der quede limpio.
+     Ajustá ORIENT_Y (0 / ±π/2 / π) si querés rotar la cara que mira a cámara. */
+  const ORIENT_X = 0;
+  const ORIENT_Y = Math.PI/2;
+  const TARGET_SIZE = 3.6;   // dimensión máxima del modelo en unidades de escena
+
+  /* ---------- renderer / escena ---------- */
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobile ? 2 : 2.2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
+  renderer.localClippingEnabled = true;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  camera.position.set(0, 0.2, 6.6);
+  camera.lookAt(0, 0.1, 0);
+
+  scene.add(new THREE.AmbientLight(0x8FA68B, 0.6));
+  const key = new THREE.DirectionalLight(0xF3EEDF, 1.25); key.position.set(2.6, 4.4, 4.6); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x4A6B45, 0.8);  rim.position.set(-3.6, 1.4, -3.2); scene.add(rim);
+  const fill = new THREE.DirectionalLight(0xBFD6C0, 0.4); fill.position.set(0, -2.2, 3.2);   scene.add(fill);
+  const burst = new THREE.PointLight(ACCENTS.sage.light, 0.0, 14, 2); burst.position.set(0, 0.4, 1.6); scene.add(burst);
+
+  /* ---------- grupos: raíz + mitad izq/der ---------- */
+  const plantRoot = new THREE.Group();
+  const leftGroup = new THREE.Group();
+  const rightGroup = new THREE.Group();
+  plantRoot.add(leftGroup, rightGroup);
+  scene.add(plantRoot);
+
+  /* planos de recorte (definidos en el frame local de cada mitad = mundo al inicio) */
+  const basePlaneL = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0); // conserva x<=0
+  const basePlaneR = new THREE.Plane(new THREE.Vector3( 1, 0, 0), 0); // conserva x>=0
+  const planeL = new THREE.Plane().copy(basePlaneL);
+  const planeR = new THREE.Plane().copy(basePlaneR);
+
+  let loaded = false;
+
+  function orientAndFit(model){
+    // pivot envuelve el modelo para orientar/escalar/recentrar sin tocar su jerarquía
+    const pivot = new THREE.Group();
+    pivot.add(model);
+    model.rotation.set(ORIENT_X, ORIENT_Y, 0);
+    pivot.updateMatrixWorld(true);
+    let box = new THREE.Box3().setFromObject(pivot);
+    const size = new THREE.Vector3(); box.getSize(size);
+    const s = TARGET_SIZE / Math.max(size.x, size.y, size.z);
+    pivot.scale.setScalar(s);
+    pivot.updateMatrixWorld(true);
+    box = new THREE.Box3().setFromObject(pivot);
+    const center = new THREE.Vector3(); box.getCenter(center);
+    pivot.position.sub(center);          // recentrar en el origen
+    pivot.updateMatrixWorld(true);
+    return pivot;
+  }
+
+  function applyClip(root, plane){
+    root.traverse(o => {
+      if(o.isMesh && o.material){
+        o.material = o.material.clone();
+        o.material.clippingPlanes = [plane];
+        o.material.clipShadows = true;
+        o.material.needsUpdate = true;
+        o.frustumCulled = false;       // las mitades se mueven mucho al abrirse
+      }
+    });
+  }
+
+  const gltfLoader = new THREE.GLTFLoader();
+  gltfLoader.load("/assets/marijuana_plant.glb",
+    (gltf) => {
+      const left  = orientAndFit(gltf.scene);
+      const right = left.clone(true);
+      applyClip(left,  planeL);
+      applyClip(right, planeR);
+      leftGroup.add(left);
+      rightGroup.add(right);
+      loaded = true;
+      canvas.classList.add("ready");
+    },
+    undefined,
+    (err) => {
+      console.warn("[HeroSplit] no se pudo cargar el modelo 3D:", err);
+      document.documentElement.classList.add("no-3d");
+    }
+  );
+
+  /* ---------- progreso de scroll (pin + scrub vía sticky) ---------- */
+  const scrollSection = document.getElementById("heroScroll");
+  let targetP = 0, curP = 0;
+  function computeProgress(){
+    const rect = scrollSection.getBoundingClientRect();
+    const total = rect.height - window.innerHeight;
+    const p = total > 0 ? (-rect.top) / total : 0;
+    targetP = Math.max(0, Math.min(1, p));
+  }
+  window.addEventListener("scroll", computeProgress, { passive:true });
+
+  const elTitle = document.getElementById("ovTitle");
+  const elSub   = document.getElementById("ovSub");
+  const elCue   = document.getElementById("ovCue");
+  const elGlow  = document.getElementById("splitGlow");
+  const elProg  = document.getElementById("ovProgBar");
+
+  let tmx = 0, tmy = 0, mx = 0, my = 0;
+  window.addEventListener("pointermove", e => {
+    tmx = (e.clientX / window.innerWidth  - 0.5) * 2;
+    tmy = (e.clientY / window.innerHeight - 0.5) * 2;
+  }, { passive:true });
+
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const smooth  = (a,b,v) => { const t = clamp01((v-a)/(b-a)); return t*t*(3-2*t); };
+  const easeIO  = t => t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
+  const lerp    = (a,b,t) => a+(b-a)*t;
+
+  /* ---------- resize ---------- */
+  function resize(){
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w/h;
+    camera.position.z = 6.6 + Math.max(0, (1.0 - w/h)) * 2.6;  // alejar en portrait
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize);
+
+  /* ---------- loop ---------- */
+  const clock = new THREE.Clock();
+  function frame(){
+    requestAnimationFrame(frame);
+    const time = clock.elapsedTime; clock.getDelta();
+
+    curP = lerp(curP, targetP, 0.12);
+    let p = curP;
+    if(window.SH_DEBUG_P != null) p = window.SH_DEBUG_P;
+
+    const sp = easeIO(smooth(0.12, 0.74, p));
+    const acc = ACCENTS[CFG.accent] || ACCENTS.sage;
+
+    // las mitades se separan y rotan abriéndose
+    const spread = CFG.spread * sp;
+    leftGroup.position.x  = -spread;  rightGroup.position.x =  spread;
+    leftGroup.rotation.y  =  sp*0.72; rightGroup.rotation.y = -sp*0.72;
+    leftGroup.position.z   = -sp*0.7; rightGroup.position.z  = -sp*0.7;
+
+    // vida en reposo, que se calma al abrir
+    const calm = 1 - sp;
+    if(CFG.idleRotate && !prefersReduced){
+      mx = lerp(mx, tmx, 0.05); my = lerp(my, tmy, 0.05);
+      plantRoot.rotation.y = (Math.sin(time*0.30)*0.14 + mx*0.18) * calm;
+      plantRoot.rotation.x = (Math.sin(time*0.24)*0.04 - my*0.10) * calm;
+      plantRoot.scale.setScalar((1 + Math.sin(time*0.9)*0.01*calm) * (1 + sp*0.06));
+    } else {
+      plantRoot.rotation.set(0,0,0);
+      plantRoot.scale.setScalar(1 + sp*0.06);
+    }
+
+    // los planos de recorte siguen a cada mitad (mundo) para que el corte se mantenga limpio
+    plantRoot.updateMatrixWorld(true);
+    planeL.copy(basePlaneL).applyMatrix4(leftGroup.matrixWorld);
+    planeR.copy(basePlaneR).applyMatrix4(rightGroup.matrixWorld);
+
+    // glow / burst dramático que brota del centro
+    const burstAmt = (CFG.glow/100) * smooth(0.05, 0.55, sp) * (1 - smooth(0.85, 1.0, sp)*0.5);
+    burst.intensity = burstAmt * 5.2;
+    burst.color.setHex(acc.light);
+
+    // overlay CSS
+    if(elGlow){ elGlow.style.opacity = (burstAmt*0.95).toFixed(3); elGlow.style.setProperty("--acc", acc.css); }
+    const titleIn = smooth(0.30, 0.56, p);
+    if(elTitle){ elTitle.style.opacity = titleIn.toFixed(3); elTitle.style.transform = `translateY(${((1-titleIn)*34).toFixed(1)}px)`; }
+    const subIn = smooth(0.54, 0.80, p);
+    if(elSub){ elSub.style.opacity = subIn.toFixed(3); elSub.style.transform = `translateY(${((1-subIn)*26).toFixed(1)}px)`; }
+    if(elCue) elCue.style.opacity = (1 - smooth(0.0, 0.10, p)).toFixed(3);
+    if(elProg) elProg.style.transform = `scaleX(${p.toFixed(3)})`;
+
+    renderer.render(scene, camera);
+  }
+
+  resize();
+  computeProgress();
+  window.addEventListener("load", () => { resize(); computeProgress(); });
+  setTimeout(computeProgress, 250);
+  frame();
+})();
+</script>
